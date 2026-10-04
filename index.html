@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="vi"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<meta name="referrer" content="no-referrer">
+<title>Quét Thẻ thi đấu</title>
+<style>
+:root{--bg:#FBF5EC;--card:#fff;--sunk:#F5EBDD;--line:#EADBC8;--ink:#2B1A12;--mut:#76604F;--red:#D4231B;--ok:#1E7D4F;--okbg:#DFF3E8;--badbg:#FDE4DF;--warnbg:#FFF3CF;--warn:#3A2500}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:480px;margin:0 auto;padding:14px 14px calc(28px + env(safe-area-inset-bottom,0px));display:grid;gap:12px}
+h1{font-size:20px;line-height:1.2;margin:0}
+.mut{color:var(--mut);font-size:13.5px}
+.box{border-radius:12px;padding:11px 14px;font-weight:600;background:var(--sunk)}
+.box.ok{background:var(--okbg);color:var(--ok)}.box.bad{background:var(--badbg);color:var(--red)}.box.warn{background:var(--warnbg);color:var(--warn)}
+.box small{display:block;font-weight:500;margin-top:2px}
+#reader{width:100%;border-radius:14px;overflow:hidden;background:#111}  /* không ẩn bằng display:none: thư viện đo bề rộng vùng này lúc mở camera */
+#reader video{display:block}
+#code{font:800 44px/1.05 ui-monospace,Menlo,Consolas,monospace;letter-spacing:.04em;text-align:center;padding:6px 0}
+.btns{display:flex;gap:10px;flex-wrap:wrap}
+button,.btn{font:inherit;font-weight:700;min-height:50px;padding:0 18px;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
+button.pri{background:var(--red);border-color:var(--red);color:#fff;flex:1}
+button:disabled{opacity:.45}
+details{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:10px 14px}
+summary{font-weight:600;cursor:pointer}
+.row{display:flex;gap:8px;margin-top:10px}
+input{font:inherit;min-height:48px;border:1.5px solid var(--line);border-radius:12px;padding:0 12px;width:100%;text-transform:uppercase}
+pre{margin:8px 0 0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;word-break:break-word;user-select:all;-webkit-user-select:all}
+[hidden]{display:none!important}
+</style></head>
+<body><main>
+<div><h1>Quét Thẻ thi đấu</h1><div class="mut" id="link">Đang kiểm tra kết nối với Bàn trọng tài…</div></div>
+
+<div id="status" class="box" role="status" aria-live="polite">Đang chuẩn bị…</div>
+<div id="reader"></div>
+
+<div id="result" hidden>
+  <div id="code" aria-label="Mã vừa quét"></div>
+  <div class="btns">
+    <button class="pri" id="back" type="button" hidden>Quay về Bàn trọng tài</button>
+    <button id="again" type="button">Quét lại</button>
+  </div>
+</div>
+
+<div class="btns"><button class="pri" id="start" type="button" hidden>Bật camera</button></div>
+
+<details id="manual">
+  <summary>Không quét được? Nhập mã trên thẻ</summary>
+  <form class="row" id="mform"><input id="mcode" inputmode="text" autocomplete="off" autocapitalize="characters" maxlength="7" placeholder="V0012" aria-label="Mã tuyển thủ"><button type="submit">Gửi</button></form>
+</details>
+
+<details>
+  <summary>Chẩn đoán</summary>
+  <pre id="diag"></pre>
+  <div class="btns" style="margin-top:8px"><button id="copy" type="button">Chép chẩn đoán</button></div>
+</details>
+
+<p class="mut">Hình ảnh camera được xử lý ngay trên máy này. Trang không gửi ảnh, video hay bất kỳ dữ liệu nào lên máy chủ; chỉ mã tuyển thủ vừa đọc được chuyển về Bàn trọng tài.</p>
+</main>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ================= CẤU HÌNH — sửa đúng ba mục này khi đặt trang lên máy chủ ================= */
+  var CFG = {
+    // 1) Nguồn gốc (origin) của khung Bàn trọng tài được phép nhận mã qua postMessage.
+    //    Mỗi dự án Apps Script có một chuỗi riêng sau "n-"; phần "-0lu-" có thể là số khác.
+    OPENERS: [/*OPENERS*/
+      /^https:\/\/n-4xaq7sk5hhw5r2n7ur4paznlbsowvkkid2q5uqq-\d+lu-script\.googleusercontent\.com$/
+    /*END*/],
+    // 2) Đường dẫn Bàn trọng tài được phép quay về (khớp đúng từng ký tự, không nhận đường dẫn lạ).
+    RETURNS: [/*RETURNS*/
+      'https://script.google.com/macros/s/AKfycbwSqNp76GrGNEZFPEal8qmpNd8vGg1LbQC0MQScH50eGDXs4A1tvt36Znyh25_mmGey/exec'
+    /*END*/],
+    // 3) Thư viện quét, phiên bản cố định 2.3.8 kèm mã kiểm toàn vẹn. Thử tệp đặt cạnh trang trước, rồi mới tới unpkg.
+    LIB: ['html5-qrcode.min.js', 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'],
+    LIB_SRI: 'sha384-c9d8RFSL+u3exBOJ4Yp3HUJXS4znl9f+z66d1y54ig+ea249SpqR+w1wyvXz/lk+',
+    CODE: /^V\d{4,6}$/            // định dạng mã tuyển thủ: V + 4–6 chữ số
+  };
+  /* ============================================================================================ */
+
+  var T = 'nado-scan', V = 1;
+  var $ = function (id) { return document.getElementById(id); };
+  var scanner = null, state = 'idle';         // idle | starting | scanning | paused | sent
+  var D = {}, P = null, opener0 = null, linked = false, seq = 0, ackTimer = 0, sentCode = '';
+
+  // ---------- Tham số do Bàn trọng tài chuyển sang (nằm sau dấu #, không gửi lên máy chủ) ----------
+  // n = mã đối chiếu của lần quét này (ngẫu nhiên, dùng một lần). Không có token đăng nhập hay passcode.
+  function readParams() {
+    var q = {}, h = location.hash.replace(/^#/, '');
+    h.split('&').forEach(function (kv) { var i = kv.indexOf('='); if (i > 0) { try { q[kv.slice(0, i)] = decodeURIComponent(kv.slice(i + 1)); } catch (e) {} } });
+    try { history.replaceState(null, '', location.pathname + location.search); } catch (e) {}   // không để lại trong lịch sử
+    var ok = q.v === '1' && /^[A-Za-z0-9_-]{16,64}$/.test(q.n || '');
+    var o = ok && CFG.OPENERS.some(function (re) { return re.test(q.o || ''); }) ? q.o : '';
+    var r = ok && CFG.RETURNS.indexOf(q.r || '') >= 0 ? q.r : '';
+    var e = /^[A-Za-z0-9_.\-]{1,40}$/.test(q.e || '') ? q.e : '';
+    return { ok: ok, n: ok ? q.n : '', o: o, r: r, e: e, oRaw: String(q.o || '').slice(0, 120), rRaw: String(q.r || '').slice(0, 160) };
+  }
+
+  // ---------- Hiển thị ----------
+  function status(kind, text, sub) { var s = $('status'); s.className = 'box ' + (kind || ''); s.textContent = text; if (sub) { var m = document.createElement('small'); m.textContent = sub; s.appendChild(m); } }
+  function setState(s) { state = s; document.body.setAttribute('data-state', s); $('start').hidden = s !== 'idle'; }
+  function diag() {
+    var keys = ['thoiDiem', 'trinhDuyet', 'trang', 'cheDo', 'khungMo', 'urlQuayVe', 'cuaSoMo', 'batTay', 'duongTraMa', 'thuVien', 'camera', 'ketQua', 'loaiLoi', 'loiTrinhDuyet'];
+    $('diag').textContent = keys.filter(function (k) { return D[k]; }).map(function (k) { return k + ': ' + D[k]; }).join('\n');
+    document.body.setAttribute('data-mode', mode());
+  }
+  function mode() { return linked ? 'postMessage' : (P && P.r ? 'url' : 'docLap'); }
+  function paintLink() {
+    var t = linked ? 'Đã nối với Bàn trọng tài. Quét xong, trang này tự đóng.'
+      : (P && P.ok && P.r) ? 'Không nối trực tiếp được với Bàn trọng tài. Quét xong, bấm “Quay về Bàn trọng tài”.'
+      : 'Trang đang chạy độc lập: chỉ hiện mã, không gửi đi đâu. Hãy mở từ nút “Quét Thẻ thi đấu” trong Bàn trọng tài.';
+    $('link').textContent = t;
+    D.cheDo = P && P.ok ? 'mở từ Bàn trọng tài' : 'độc lập (không có tham số hợp lệ)';
+    var hasOpener = false; try { hasOpener = !!window.opener; } catch (e) {}
+    if (P && P.ok) {
+      D.khungMo = P.o ? 'origin được duyệt: ' + P.o : 'origin KHÔNG nằm trong danh sách OPENERS: ' + (P.oRaw || '(trống)');
+      D.urlQuayVe = P.r ? 'được duyệt' : 'KHÔNG nằm trong danh sách RETURNS: ' + (P.rRaw || '(trống)');
+    }
+    D.cuaSoMo = opener0 ? 'còn quan hệ với cửa sổ mở' : (hasOpener ? 'có window.opener nhưng origin chưa được duyệt' : 'KHÔNG có window.opener');
+    D.duongTraMa = mode();
+    diag();
+  }
+
+  // ---------- Kênh postMessage với cửa sổ đã mở trang này ----------
+  function post(k, extra) {
+    if (!opener0 || !P || !P.o) return false;
+    var m = { t: T, v: V, n: P.n, k: k }; for (var x in (extra || {})) m[x] = extra[x];
+    try { opener0.postMessage(m, P.o); return true; } catch (e) { return false; }   // chỉ gửi tới đúng origin đã duyệt
+  }
+  window.addEventListener('message', function (ev) {
+    if (!P || !P.o || ev.origin !== P.o) return;            // đúng origin Bàn trọng tài
+    if (!opener0 || ev.source !== opener0) return;          // đúng cửa sổ đã mở trang này
+    var m = ev.data;
+    if (!m || typeof m !== 'object' || m.t !== T || m.v !== V || m.n !== P.n) return;   // đúng mã đối chiếu
+    if (m.k === 'hello') { linked = true; D.batTay = 'Bàn trọng tài đã trả lời'; paintLink(); }
+    if (m.k === 'ack' && state === 'sent') { clearTimeout(ackTimer); done(); }
+  });
+  function done() {
+    D.ketQua = 'đã gửi ' + sentCode + ' qua postMessage, Bàn trọng tài đã xác nhận nhận'; diag();
+    status('ok', 'Đã gửi ' + sentCode + ' về Bàn trọng tài.', 'Đang đóng trang quét…');
+    stopCam();
+    setTimeout(function () {
+      try { window.close(); } catch (e) {}
+      setTimeout(function () { status('ok', 'Đã gửi ' + sentCode + ' về Bàn trọng tài.', 'Trình duyệt không cho tự đóng: hãy đóng tab này hoặc chuyển về tab Bàn trọng tài.'); }, 400);
+    }, 250);
+  }
+
+  // ---------- Có mã ----------
+  function accept(raw, how) {
+    var code = String(raw == null ? '' : raw).trim().toUpperCase();
+    if (!CFG.CODE.test(code)) return false;
+    sentCode = code; $('code').textContent = code; $('result').hidden = false;
+    D.ketQua = 'đọc được ' + code + ' (' + how + ')';
+    if (linked || (opener0 && P.o)) {
+      setState('sent'); status('', 'Đang gửi ' + code + ' về Bàn trọng tài…');
+      post('code', { seq: ++seq, code: code });
+      ackTimer = setTimeout(function () {                     // không thấy xác nhận: chuyển sang đường quay về bằng URL
+        linked = false; D.batTay = 'gửi mã nhưng không nhận được xác nhận sau 2 giây'; paintLink(); offerReturn(code);
+      }, 2000);
+    } else offerReturn(code);
+    diag();
+    return true;
+  }
+  function offerReturn(code) {
+    setState('paused');
+    if (P && P.r) { $('back').hidden = false; status('ok', 'Đã đọc được mã ' + code + '.', 'Bấm “Quay về Bàn trọng tài” để tra tuyển thủ.'); $('back').focus(); }
+    else { $('back').hidden = true; status('ok', 'Đã đọc được mã ' + code + '.', 'Trang đang chạy độc lập nên không gửi mã đi đâu.'); }
+  }
+  $('back').addEventListener('click', function () {
+    if (!P || !P.r || !sentCode) return;
+    stopCam();
+    // Chỉ chuyển: mã tuyển thủ, mã đối chiếu của lần quét, mã sự kiện. Không có token, passcode hay dữ liệu cá nhân.
+    location.replace(P.r + '?scan=' + encodeURIComponent(sentCode) + '&n=' + encodeURIComponent(P.n) + (P.e ? '&e=' + encodeURIComponent(P.e) : ''));
+  });
+
+  // ---------- Thư viện ----------
+  var libP = null;
+  function loadLib() {
+    if (window.Html5Qrcode) return Promise.resolve();
+    if (libP) return libP;
+    var tryOne = function (i) {
+      return new Promise(function (res, rej) {
+        if (i >= CFG.LIB.length) { rej(new Error('không tải được thư viện quét')); return; }
+        var s = document.createElement('script'), to = setTimeout(function () { s.onload = s.onerror = null; res(tryOne(i + 1)); }, 12000);
+        s.src = CFG.LIB[i]; s.integrity = CFG.LIB_SRI; s.crossOrigin = 'anonymous'; s.async = true;
+        s.onload = function () { clearTimeout(to); if (window.Html5Qrcode) { D.thuVien = 'html5-qrcode@2.3.8 từ ' + (i ? 'unpkg.com' : 'cùng máy chủ'); res(); } else res(tryOne(i + 1)); };
+        s.onerror = function () { clearTimeout(to); res(tryOne(i + 1)); };
+        document.head.appendChild(s);
+      });
+    };
+    libP = tryOne(0); libP.catch(function () { libP = null; D.thuVien = 'KHÔNG tải được'; });
+    return libP;
+  }
+
+  // ---------- Camera ----------
+  function policyCamera() { try { var p = document.permissionsPolicy || document.featurePolicy; if (p && p.allowsFeature) return p.allowsFeature('camera'); } catch (e) {} return null; }
+  function classify(name, msg) {
+    if (!window.isSecureContext) return ['NGU_CANH_KHONG_AN_TOAN', 'Trang phải chạy trên https.'];
+    if (!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia)) return ['KHONG_CO_API_CAMERA', 'Trình duyệt này không hỗ trợ camera cho trang web (hay gặp khi mở trong Zalo, Facebook). Mở bằng Safari hoặc Chrome.'];
+    if (/NotAllowed|Security|PermissionDenied/i.test(name)) {
+      if (policyCamera() === false || /permissions? policy/i.test(msg)) return ['PERMISSIONS_POLICY', 'Trang bị nhúng trong khung không có quyền camera. Mở trang ở tab riêng.'];
+      return ['QUYEN_CAMERA_BI_TU_CHOI', 'Chưa được phép dùng camera. Cho phép Camera cho trang này trong cài đặt trình duyệt rồi bấm “Bật camera”.'];
+    }
+    if (/NotReadable|TrackStart|Abort/i.test(name)) return ['CAMERA_DANG_BAN', 'Camera đang bị ứng dụng khác dùng. Đóng ứng dụng đó rồi bấm “Bật camera”.'];
+    if (/Overconstrained|ConstraintNotSatisfied/i.test(name)) return ['CAU_HINH_CAMERA', 'Máy không có camera sau phù hợp.'];
+    if (/NotFound|DevicesNotFound/i.test(name)) return ['KHONG_CO_CAMERA', 'Không tìm thấy camera trên máy.'];
+    return ['CHUA_RO', 'Camera không mở được.'];
+  }
+  function onDecode(text) {
+    if (state !== 'scanning') return;                    // chống callback lặp
+    var code = String(text || '').trim().toUpperCase();
+    if (!CFG.CODE.test(code)) { status('warn', 'Mã QR này không phải Thẻ thi đấu.', 'Đưa đúng mã QR trên Thẻ thi đấu vào khung.'); return; }   // vẫn quét tiếp
+    setState('paused');
+    try { scanner.pause(true); } catch (e) {}
+    Array.prototype.forEach.call($('reader').children, function (el) { if (el.textContent === 'Scanner paused') el.textContent = 'Đã tạm dừng'; });
+    try { navigator.vibrate && navigator.vibrate(30); } catch (e) {}
+    accept(code, 'camera');
+  }
+  function start() {
+    if (state !== 'idle') return;
+    setState('starting'); $('result').hidden = true; status('', 'Đang mở camera…');
+    loadLib().then(function () {
+      try { scanner = new Html5Qrcode('reader', { formatsToSupport: [Html5QrcodeSupportedFormats.QR_CODE], verbose: false }); }
+      catch (e) { fail('LOI_THU_VIEN', 'Thư viện quét không khởi tạo được.', String(e)); return; }
+      var t0 = performance.now();
+      var cfg = { fps: 10, qrbox: function (w, h) { var s = Math.max(140, Math.floor(Math.min(w, h) * 0.72)); return { width: s, height: s }; } };
+      var go = function (facing) { return scanner.start({ facingMode: facing }, cfg, onDecode, function () {}); };
+      go('environment').catch(function (err) { if (/Overconstrained/i.test(String(err))) return go('user'); throw err; }).then(function () {
+        setState('scanning'); status('ok', 'Đưa mã QR trên Thẻ thi đấu vào khung.');
+        D.camera = 'mở sau ' + Math.round(performance.now() - t0) + ' ms'; D.loaiLoi = ''; D.loiTrinhDuyet = ''; diag();
+      }, function (err) {
+        var msg = String(err && err.message || err), m = /(\w+Error)/.exec(msg), k = classify(m ? m[1] : '', msg);
+        try { scanner.clear(); } catch (e) {}
+        scanner = null; fail(k[0], k[1], msg);
+      });
+    }, function () { fail('KHONG_TAI_DUOC_THU_VIEN', 'Không tải được thư viện quét. Kiểm tra mạng rồi bấm “Bật camera”.', ''); });
+  }
+  function fail(code, why, raw) {
+    D.camera = 'KHÔNG MỞ'; D.loaiLoi = code; D.loiTrinhDuyet = raw; diag();
+    setState('idle'); status('bad', why, 'Có thể nhập mã trên thẻ ở ô bên dưới.'); $('manual').open = true;
+  }
+  function stopCam() {
+    var s = scanner; scanner = null; if (!s) return Promise.resolve();
+    var p; try { p = s.getState() > 1 ? s.stop() : Promise.resolve(); } catch (e) { p = Promise.resolve(); }
+    return p.catch(function () {}).then(function () { try { s.clear(); } catch (e) {} });
+  }
+  function again() {
+    clearTimeout(ackTimer); $('result').hidden = true; $('back').hidden = true; sentCode = '';
+    if (scanner && state === 'paused') { try { scanner.resume(); setState('scanning'); status('ok', 'Đưa mã QR trên Thẻ thi đấu vào khung.'); return; } catch (e) {} }
+    stopCam().then(function () { setState('idle'); start(); });
+  }
+
+  // ---------- Sự kiện ----------
+  $('start').addEventListener('click', start);
+  $('again').addEventListener('click', again);
+  $('mform').addEventListener('submit', function (e) {
+    e.preventDefault();
+    if (state === 'sent') return;
+    if (state === 'scanning') { setState('paused'); try { scanner.pause(true); } catch (x) {} }
+    if (!accept($('mcode').value, 'nhập tay')) { status('warn', 'Mã chưa đúng dạng.', 'Mã tuyển thủ gồm chữ V và 4–6 chữ số, ví dụ V0012.'); if (scanner && state === 'paused') { try { scanner.resume(); setState('scanning'); } catch (x) {} } }
+  });
+  $('copy').addEventListener('click', function () {
+    var t = $('diag').textContent, b = $('copy'), ok = function () { b.textContent = 'Đã chép'; setTimeout(function () { b.textContent = 'Chép chẩn đoán'; }, 1500); };
+    try { navigator.clipboard.writeText(t).then(ok, function () {}); } catch (e) {}
+  });
+  // Rời màn hình thì tắt camera; quay lại thì bấm "Bật camera".
+  document.addEventListener('visibilitychange', function () { if (document.hidden && (state === 'scanning' || state === 'starting')) stopCam().then(function () { setState('idle'); status('', 'Camera đã tắt vì rời màn hình.'); }); });
+  window.addEventListener('pagehide', function () { stopCam(); });
+  window.addEventListener('hashchange', function () { location.reload(); });      // Bàn trọng tài mở lại bằng mã đối chiếu mới
+
+  // ---------- Khởi động ----------
+  P = readParams();
+  try { opener0 = (P.o && window.opener && !window.opener.closed) ? window.opener : null; } catch (e) { opener0 = null; }
+  D.thoiDiem = new Date().toISOString(); D.trinhDuyet = navigator.userAgent; D.trang = location.origin;
+  var framed = false; try { framed = window.self !== window.top; } catch (e) { framed = true; }
+  if (framed) D.trang += ' (đang bị nhúng trong khung)';
+  setState('idle'); paintLink();
+  if (opener0) { D.batTay = 'đã gửi lời chào, chờ Bàn trọng tài trả lời'; post('ready'); setTimeout(function () { if (!linked) { D.batTay = 'Bàn trọng tài không trả lời sau 2,5 giây'; paintLink(); } }, 2500); }
+  loadLib().then(function () { diag(); }, function () { diag(); });
+  start();                                                 // mở camera ngay; nếu trình duyệt đòi chạm, nút "Bật camera" hiện ra
+})();
+</script>
+</body></html>
