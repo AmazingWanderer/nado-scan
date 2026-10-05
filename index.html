@@ -22,6 +22,7 @@ h1{font-size:20px;line-height:1.2;margin:0}
 button,.btn{font:inherit;font-weight:700;min-height:50px;padding:0 18px;border-radius:12px;border:1.5px solid var(--line);background:#fff;color:var(--ink);cursor:pointer}
 button.pri{background:var(--red);border-color:var(--red);color:#fff;flex:1}
 button:disabled{opacity:.45}
+a.btn{display:inline-flex;align-items:center;justify-content:center;text-decoration:none;flex:1;background:var(--red);border-color:var(--red);color:#fff}
 details{border:1px solid var(--line);border-radius:12px;background:var(--card);padding:10px 14px}
 summary{font-weight:600;cursor:pointer}
 .row{display:flex;gap:8px;margin-top:10px}
@@ -39,6 +40,7 @@ pre{margin:8px 0 0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-spa
   <div id="code" aria-label="Mã vừa quét"></div>
   <div class="btns">
     <button class="pri" id="back" type="button" hidden>Quay về Bàn trọng tài</button>
+    <a class="btn" id="home" hidden>Mở Bàn trọng tài</a>
     <button id="again" type="button">Quét lại</button>
   </div>
 </div>
@@ -111,7 +113,7 @@ pre{margin:8px 0 0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-spa
   function paintLink() {
     var t = linked ? 'Đã nối với Bàn trọng tài. Quét xong, trang này tự đóng.'
       : (P && P.ok && P.r) ? 'Không nối trực tiếp được với Bàn trọng tài. Quét xong, bấm “Quay về Bàn trọng tài”.'
-      : 'Trang đang chạy độc lập: chỉ hiện mã, không gửi đi đâu. Hãy mở từ nút “Quét Thẻ thi đấu” trong Bàn trọng tài.';
+      : 'Trang quét đang mở riêng: chỉ hiện mã, không điểm danh được. Hãy mở từ nút “Quét Thẻ thi đấu” trong Bàn trọng tài.';
     $('link').textContent = t;
     D.cheDo = P && P.ok ? 'mở từ Bàn trọng tài' : 'độc lập (không có tham số hợp lệ)';
     var hasOpener = false; try { hasOpener = !!window.opener; } catch (e) {}
@@ -144,7 +146,7 @@ pre{margin:8px 0 0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-spa
     stopCam();
     setTimeout(function () {
       try { window.close(); } catch (e) {}
-      setTimeout(function () { status('ok', 'Đã gửi ' + sentCode + ' về Bàn trọng tài.', 'Trình duyệt không cho tự đóng: hãy đóng tab này hoặc chuyển về tab Bàn trọng tài.'); }, 400);
+      setTimeout(function () { status('ok', 'Đã gửi ' + sentCode + ' về Bàn trọng tài.', 'Trình duyệt không cho tự đóng tab này. Chuyển về tab Bàn trọng tài để xem hồ sơ và bấm Điểm danh.'); }, 400);
     }, 250);
   }
 
@@ -167,7 +169,12 @@ pre{margin:8px 0 0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-spa
   function offerReturn(code) {
     setState('paused');
     if (P && P.r) { $('back').hidden = false; status('ok', 'Đã đọc được mã ' + code + '.', 'Bấm “Quay về Bàn trọng tài” để tra tuyển thủ.'); $('back').focus(); }
-    else { $('back').hidden = true; status('ok', 'Đã đọc được mã ' + code + '.', 'Trang đang chạy độc lập nên không gửi mã đi đâu.'); }
+    else {
+      // Trang quét được mở riêng (không qua nút trong Bàn trọng tài): không có nơi nhận mã, nên không có nút Điểm danh.
+      $('back').hidden = true;
+      status('warn', 'Đọc được mã ' + code + ', nhưng trang quét đang mở riêng nên chưa điểm danh được.', 'Mở Bàn trọng tài, vào sự kiện rồi bấm “Quét Thẻ thi đấu” ở đó: hồ sơ và nút Điểm danh hiện trong Bàn trọng tài.');
+      if (CFG.RETURNS[0]) { $('home').href = CFG.RETURNS[0]; $('home').hidden = false; }
+    }
   }
   $('back').addEventListener('click', function () {
     if (!P || !P.r || !sentCode) return;
@@ -248,7 +255,7 @@ pre{margin:8px 0 0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-spa
     return p.catch(function () {}).then(function () { try { s.clear(); } catch (e) {} });
   }
   function again() {
-    clearTimeout(ackTimer); $('result').hidden = true; $('back').hidden = true; sentCode = '';
+    clearTimeout(ackTimer); $('result').hidden = true; $('back').hidden = true; $('home').hidden = true; sentCode = '';
     if (scanner && state === 'paused') { try { scanner.resume(); setState('scanning'); status('ok', 'Đưa mã QR trên Thẻ thi đấu vào khung.'); return; } catch (e) {} }
     stopCam().then(function () { setState('idle'); start(); });
   }
