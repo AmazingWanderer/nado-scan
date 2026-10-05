@@ -70,11 +70,14 @@ pre{margin:8px 0 0;font:12px/1.5 ui-monospace,Menlo,Consolas,monospace;white-spa
     // 1) Nguồn gốc (origin) của khung Bàn trọng tài được phép nhận mã qua postMessage.
     //    Mỗi dự án Apps Script có một chuỗi riêng sau "n-"; phần "-0lu-" có thể là số khác.
     OPENERS: [/*OPENERS*/
-      /^https:\/\/n-4xaq7sk5hhw5r2n7ur4paznlbsowvkkid2q5uqq-\d+lu-script\.googleusercontent\.com$/
+      /^https:\/\/n-jv635d6n772ch3jdugfceass5kux5slqdvflk6y-[0-9a-z]{1,8}-script\.googleusercontent\.com$/,   // Bàn trọng tài chính thức (Infinity Nado V2)
+      /^https:\/\/n-4xaq7sk5hhw5r2n7ur4paznlbsowvkkid2q5uqq-\d+lu-script\.googleusercontent\.com$/              // bản sao thử (dữ liệu giả)
     /*END*/],
     // 2) Đường dẫn Bàn trọng tài được phép quay về (khớp đúng từng ký tự, không nhận đường dẫn lạ).
+    //    Mục đầu tiên là bản chính thức: nút “Mở Bàn trọng tài” khi trang quét bị mở riêng dẫn về đó.
     RETURNS: [/*RETURNS*/
-      'https://script.google.com/macros/s/AKfycbwSqNp76GrGNEZFPEal8qmpNd8vGg1LbQC0MQScH50eGDXs4A1tvt36Znyh25_mmGey/exec'
+      'https://script.google.com/macros/s/AKfycbwRC-VGQBl-sMG0z8rL0mYOd5WrFIzLKFS_4NCfRG3oAb5gDeVxOTVSaiZKmG5OgnUQtA/exec',   // chính thức
+      'https://script.google.com/macros/s/AKfycbwSqNp76GrGNEZFPEal8qmpNd8vGg1LbQC0MQScH50eGDXs4A1tvt36Znyh25_mmGey/exec'      // bản sao thử
     /*END*/],
     // 3) Thư viện quét, phiên bản cố định 2.3.8 kèm mã kiểm toàn vẹn. Thử tệp đặt cạnh trang trước, rồi mới tới unpkg.
     LIB: ['html5-qrcode.min.js', 'https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js'],
